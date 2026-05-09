@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "atari-rl"
+version = "0.1.0"
+description = "Atari deep reinforcement learning with DQN, Double DQN, and Dueling DQN"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "gymnasium[atari]>=0.29.0",
+    "numpy>=1.24.0",
+    "tensorboard>=2.13.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["atari_rl*"]
