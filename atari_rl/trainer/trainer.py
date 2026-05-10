@@ -8,7 +8,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from atari_rl.agents import DQNAgent
-from atari_rl.config.settings import Config
+from atari_rl.config.settings import Config, ModelType
 from atari_rl.utils.atari_wrapper import make_atari_env
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ class Trainer:
 
                 if mean_reward > best_mean_reward:
                     best_mean_reward = mean_reward
-                    self.agent.save(str(self.checkpoint_dir / "best.pt"))
+                    self.agent.save(str(self.checkpoint_dir / f"best_{step}.pt"))
 
             if step % config.training.save_frequency == 0:
                 self.agent.save(
@@ -167,11 +167,35 @@ class Trainer:
         self.eval_env.close()
         self.writer.close()
 
-    def test(self, checkpoint_path: str | None = None, render: bool = False) -> list[float]:
+    def test(self, checkpoint_path: str | None = None, render: bool = False, stopRepeated: int = 20) -> list[float]:
+        if checkpoint_path:
+            ckpt_meta = torch.load(
+                checkpoint_path, map_location=self.device, weights_only=False
+            ).get("metadata", {})
+
+            ckpt_env_id = ckpt_meta.get("env_id")
+            if ckpt_env_id and ckpt_env_id != self.config.atari.env_id:
+                logger.info(
+                    "Using env_id=%s from checkpoint (config had %s)",
+                    ckpt_env_id, self.config.atari.env_id,
+                )
+                self.config.atari.env_id = ckpt_env_id
+
+            ckpt_model_type = ckpt_meta.get("model_type")
+            if ckpt_model_type and ckpt_model_type != self.config.model_type.value:
+                logger.info(
+                    "Using model_type=%s from checkpoint (config had %s)",
+                    ckpt_model_type, self.config.model_type.value,
+                )
+                self.config.model_type = ModelType(ckpt_model_type)
+
         render_mode = "human" if render else None
         env = make_atari_env(self.config.atari, render_mode=render_mode)
 
         if checkpoint_path:
+            n_channels = self.config.atari.frame_stack
+            n_actions = env.action_space.n
+            self.agent = DQNAgent(self.config, n_channels, n_actions)
             self.agent.load(checkpoint_path)
 
         self.agent.online.eval()
@@ -191,10 +215,21 @@ class Trainer:
             total_reward = 0.0
             done = False
             steps = 0
+            repeatedSteps = 0
+            previousAction = None
 
             while not done:
                 action = self.agent.act(state, epsilon=0.0)
                 state, reward, terminated, truncated, _ = env.step(action)
+
+                if(previousAction == action):
+                    if not repeatedSteps == stopRepeated:
+                        repeatedSteps += 1
+                    else:
+                        terminated = True
+                else:
+                    previousAction = action
+
                 total_reward += reward
                 done = terminated or truncated
                 steps += 1

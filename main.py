@@ -2,7 +2,7 @@ import argparse
 import logging
 import random
 import sys
-
+ 
 import numpy as np
 import torch
 
@@ -110,9 +110,12 @@ def main() -> None:
 
     trainer = Trainer(config)
 
+    print(args)
+
     if args.mode == "train":
         trainer.train()
     elif args.mode == "test":
+
         trainer.test(checkpoint_path=args.checkpoint, render=args.render)
 
 
