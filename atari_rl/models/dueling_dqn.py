@@ -17,13 +17,13 @@ class DuelingDQN(nn.Module):
         self.advantage = nn.Sequential(
             nn.Flatten(),
             nn.Linear(64 * 7 * 7, 512),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.Linear(512, n_actions),
         )
         self.value = nn.Sequential(
             nn.Flatten(),
             nn.Linear(64 * 7 * 7, 512),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.Linear(512, 1),
         )
 

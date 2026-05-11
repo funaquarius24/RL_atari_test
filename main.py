@@ -27,7 +27,7 @@ def _set_seed(seed: int) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Atari deep RL — DQN / Double DQN / Dueling DQN"
+        description="Atari deep RL — DQN / Double DQN / Dueling DQN / NEC"
     )
     parser.add_argument(
         "--mode",
@@ -43,7 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         type=str,
         default="dqn",
-        choices=["dqn", "double_dqn", "dueling_dqn"],
+        choices=["dqn", "double_dqn", "dueling_dqn", "nec"],
         help="Model architecture",
     )
     parser.add_argument(
@@ -61,6 +61,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--checkpoint-dir", type=str, default="checkpoints", help="Checkpoint directory"
+    )
+    parser.add_argument(
+        "--time-limit", type=float, default=0.0, help="Max training time in hours (0 = no limit)"
     )
 
     # Test mode arguments
@@ -97,6 +100,7 @@ def _prepare_config(args) -> Config:
     config.training.learning_rate = args.lr
     config.replay.batch_size = args.batch_size
     config.replay.capacity = args.buffer_capacity
+    config.training.time_limit_hours = args.time_limit
     config.evaluation.episodes = args.episodes
     config.evaluation.render = args.render
     return config

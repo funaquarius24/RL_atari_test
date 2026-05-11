@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from atari_rl.agents import DQNAgent
+from atari_rl.agents import create_agent
 from atari_rl.config.settings import Config, ModelType
 from atari_rl.utils.atari_wrapper import make_atari_env
 
@@ -35,7 +35,7 @@ class Trainer:
         self.eval_env = make_atari_env(config.atari)
         n_actions = self.train_env.action_space.n
 
-        self.agent = DQNAgent(config, n_channels, n_actions)
+        self.agent = create_agent(config, n_channels, n_actions)
         self.writer = SummaryWriter(log_dir=str(self.log_dir))
 
     def _epsilon(self, step: int) -> float:
@@ -57,18 +57,40 @@ class Trainer:
         start_time = time.time()
         log_time = start_time
         filling = True
+        time_limit_reached = False
 
         total_steps = config.training.total_steps
+        total_frames = total_steps * config.atari.frame_skip
         min_size = config.replay.min_size
+        time_limit_secs = config.training.time_limit_hours * 3600
 
         logger.info(
-            "Training %s on %s for %d steps",
+            "Training %s on %s for %d steps (%d frames)  frame_skip=%d  time_limit=%gh",
             config.model_type.value,
             config.atari.env_id,
             total_steps,
+            total_frames,
+            config.atari.frame_skip,
+            config.training.time_limit_hours,
         )
 
         for step in range(1, total_steps + 1):
+            frames = step * config.atari.frame_skip
+
+            if time_limit_secs > 0 and (step % 1000 == 0 or time_limit_reached):
+                elapsed = time.time() - start_time
+                if elapsed >= time_limit_secs:
+                    time_limit_reached = True
+                    logger.info(
+                        "Time limit of %gh reached at step %d (%d frames, elapsed=%.0fs)",
+                        config.training.time_limit_hours,
+                        step,
+                        frames,
+                        elapsed,
+                    )
+                    self.agent.save(str(self.checkpoint_dir / f"time_limit_step{step}.pt"))
+                    break
+
             epsilon = self._epsilon(step)
             action = self.agent.act(state, epsilon)
             next_state, reward, terminated, truncated, _ = self.train_env.step(action)
@@ -126,14 +148,17 @@ class Trainer:
 
                 elapsed = time.time() - start_time
                 steps_per_sec = step / elapsed
+                fps = frames / elapsed
                 eta = (total_steps - step) / steps_per_sec
                 logger.info(
-                    "Step %d/%d  eps=%.3f  eval_reward=%.1f  %.0f steps/s  ETA=%.0fmin",
+                    "Step %d/%d  frames=%d  eps=%.3f  eval_reward=%.1f  %.0f steps/s  %.0f fps  ETA=%.0fmin",
                     step,
                     total_steps,
+                    frames,
                     epsilon,
                     mean_reward,
                     steps_per_sec,
+                    fps,
                     eta / 60,
                 )
 
@@ -150,19 +175,39 @@ class Trainer:
                 log_time = time.time()
                 elapsed = time.time() - start_time
                 steps_per_sec = step / elapsed
+                fps = frames / elapsed
                 eta = (total_steps - step) / steps_per_sec
                 phase = "filling buffer" if filling else "training"
                 logger.info(
-                    "Step %d/%d  eps=%.3f  buffer=%d  %s  %.0f steps/s  ETA=%.0fmin",
+                    "Step %d/%d  frames=%d  eps=%.3f  buffer=%d  %s  %.0f steps/s  %.0f fps  ETA=%.0fmin",
                     step,
                     total_steps,
+                    frames,
                     epsilon,
                     len(self.agent.replay),
                     phase,
                     steps_per_sec,
+                    fps,
                     eta / 60,
                 )
 
+        total_elapsed = time.time() - start_time
+        final_step = step if time_limit_reached else total_steps
+        final_frames = final_step * config.atari.frame_skip
+        logger.info(
+            "Training complete  model=%s  env=%s  steps=%d  frames=%d  episodes=%d  "
+            "time=%.0fs (%.2fh)  %.0f steps/s  %.0f fps  best_reward=%.1f",
+            config.model_type.value,
+            config.atari.env_id,
+            final_step,
+            final_frames,
+            episode,
+            total_elapsed,
+            total_elapsed / 3600,
+            final_step / total_elapsed,
+            final_frames / total_elapsed,
+            best_mean_reward if best_mean_reward != -float("inf") else 0.0,
+        )
         self.train_env.close()
         self.eval_env.close()
         self.writer.close()
@@ -195,7 +240,7 @@ class Trainer:
         if checkpoint_path:
             n_channels = self.config.atari.frame_stack
             n_actions = env.action_space.n
-            self.agent = DQNAgent(self.config, n_channels, n_actions)
+            self.agent = create_agent(self.config, n_channels, n_actions)
             self.agent.load(checkpoint_path)
 
         self.agent.online.eval()
@@ -222,13 +267,14 @@ class Trainer:
                 action = self.agent.act(state, epsilon=0.0)
                 state, reward, terminated, truncated, _ = env.step(action)
 
-                if(previousAction == action):
-                    if not repeatedSteps == stopRepeated:
-                        repeatedSteps += 1
-                    else:
+                if previousAction == action:
+                    if repeatedSteps >= stopRepeated:
                         terminated = True
+                    else:
+                        repeatedSteps += 1
                 else:
                     previousAction = action
+                    repeatedSteps = 0
 
                 total_reward += reward
                 done = terminated or truncated

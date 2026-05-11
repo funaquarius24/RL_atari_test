@@ -7,6 +7,7 @@ class ModelType(str, Enum):
     DQN = "dqn"
     DOUBLE_DQN = "double_dqn"
     DUELING_DQN = "dueling_dqn"
+    NEC = "nec"
 
 
 class ExplorationMode(str, Enum):
@@ -18,6 +19,7 @@ class ExplorationMode(str, Enum):
 class AtariConfig:
     env_id: str = "PongNoFrameskip-v4"
     frame_stack: int = 4
+    frame_skip: int = 4
     screen_size: int = 84
     grayscale: bool = True
     noop_max: int = 30
@@ -45,6 +47,7 @@ class TrainingConfig:
     eval_frequency: int = 50_000
     log_frequency: int = 1_000
     save_frequency: int = 100_000
+    time_limit_hours: float = 0.0
 
 
 @dataclass
@@ -63,6 +66,13 @@ class ExplorationConfig:
 
 
 @dataclass
+class DNDConfig:
+    capacity: int = 50_000
+    lr: float = 0.1
+    knn_k: int = 50
+
+
+@dataclass
 class Config:
     seed: int = 42
     device: str = "auto"
@@ -72,5 +82,6 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     exploration: ExplorationConfig = field(default_factory=ExplorationConfig)
+    dnd: DNDConfig = field(default_factory=DNDConfig)
     log_dir: str = "runs"
     checkpoint_dir: str = "checkpoints"

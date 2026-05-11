@@ -24,7 +24,7 @@ def make_atari_env(config: AtariConfig, render_mode: str | None = None) -> gym.E
         env,
         screen_size=config.screen_size,
         grayscale_obs=config.grayscale,
-        frame_skip=4,
+        frame_skip=config.frame_skip,
         noop_max=config.noop_max,
     )
     env = FrameStackObservation(env, stack_size=config.frame_stack)
